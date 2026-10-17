@@ -2,6 +2,50 @@
 
 ## Unreleased
 
+### 新：热重载 —— 改完插件代码不用重启 DSH
+
+用户问：「当前版本不是可以热重载插件了吗，curator 能不能做到？」答案是**能，但要一次重组**。
+这一轮先做了对照实验，再把它做成按钮。
+
+- **实验（不是读文档猜的）**：
+  1. 改 `lib/index.js` 加一个探针字段 → 只等文件事件，**15 秒内仍是旧行为**；
+  2. 改一下 `cordis.patch.yml` 触发 profile 重组 → **4 秒内新代码生效**；
+  3. 直接调 `pluginManager.reload()`（包在 `hmr.runExclusive` 里）→ **1.5 秒内生效**。
+  结论：DSH 的 HMR 确实会替换 host 模块，但**不是「存盘即生效」**，需要一次重组推动；
+  以前用户只能重启，而重启其实只是顺带做了一次重组。
+- **新增 `POST /api/dsh-curator/reload`**：
+  ```js
+  hmr.runExclusive(() => manager.reload())   // 内部即 hmr.reconcileProfile()
+  ```
+  返回 `{ ok, restartRequired, restartReason, warnings, hint }`；
+  拿不到宿主 `pluginManager` 时返回 503 并明说"请重启"，不假装成功。
+  （踩过两个坑：`reconcileProfile` 必须跑在 `runExclusive` 里，否则抛
+  `HMR profile reconciliation must run inside runExclusive`；`manager.reload()` 也**不能**在
+  未注入的 ctx 上取 —— ctx 是带守卫的代理。）
+- **新增 `GET /api/dsh-curator/diagnostics`**：只读自检，返回 pid / 启动时间 /
+  当前 `index.js` 的磁盘 mtime+size / `hmr` 是否存在 / `build` 标记。
+  用它就能回答"跑的是新代码还是旧代码"，不必再靠猜。
+  实现上刻意不让 handler 碰 `ctx`（守卫会抛，宿主会把它变成空体 400 —— 这里真踩了一次）。
+- **前端**：「重载插件代码」按钮（插件页工具栏）。成功→绿色提示；有 `restartRequired`→红色并说明原因；
+  有 `warnings`（某个插件导入失败）→按失败列出，不再只报"成功"。
+- **能力矩阵**（写进 README）：改前端=刷新；改宿主=点按钮；启停=当场；**装卸载/升级=必须重启**。
+- **验证**：`tools/test-hmr-reload.mjs`（对照实验，6 项）、`tools/test-reload-endpoint.mjs`
+  （真调端点验证生效，4 项）、`tools/test-hot-reload-matrix.mjs`（13 项，含"远程 API 没有 reload"这条边界）。
+
+### 修：git-graph 插件静默加载失败（pnpm hoisted 下依赖解析不到）
+
+顺带发现并修掉：`@linxin666/dsh-client-ui-git-graph@0.4.7` 在 host 侧 import 失败 ——
+`ENOENT ... @linxin666/dsh-client-ui-git-graph/node_modules/@deepseek-ai/schemastery/lib/index.mjs`。
+
+- **原因**：这个 profile 用 `nodeLinker: hoisted`，依赖被提升到 profile 根；
+  而宿主的 ESM 解析从插件目录出发（`createRequire(anchor).resolve.paths`），
+  会先看包内 `node_modules` —— 那里只有一个**空的** `@deepseek-ai` 目录，于是解析落空。
+  印证：profile 根已有 `schemastery@3.18.5`（版本正好满足它的 `^3.18.5`）。
+- **修法**：把根副本 junction 到包内（`mklink /J`），等价于 pnpm 隔离布局本该有的样子；
+  然后 `/reload` 一次，reload 的 `warnings` 从 1 条变 0 条，插件恢复。
+- **教训**：`reload()` 的 `warnings` 是**唯一**能看见"某个插件没导入成功"的地方 ——
+  之前它只出现在 stderr，用户完全不知道。
+
 ### 修：开关显示「开启」、徽标却写「已关闭」——选择状态 ≠ 运行状态
 
 用户实测：`dsh-workbuddy-connect` v0.7.7 开关是开的，徽标却写「已关闭」，问"什么情况"。
