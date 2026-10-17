@@ -46,8 +46,14 @@ dsh plugin --profile "${DSH_PROFILE:-desktop}" add "link:$(pwd)/dsh-curator"
 | 启用 / 停用 | `setBundleEnabled` —— 写 `dsh.profile.bundles` 并调 `reconcileProfilePatches` 热应用 | 手写补丁层 `disabled` + 改 bundles |
 | 卸载 | `removeBundle` —— 先停用、热应用，再 `pnpm rm`，并拒绝卸载受保护包 | `dsh plugin rm` → `pnpm rm` 三级退路 |
 | 安装 | `installBundle` —— pnpm add + 进 bundles + 热应用，失败回滚 `package.json` / `pnpm-lock.yaml` | `dsh plugin add` → `pnpm add` |
+| 更新 | **不走官方服务**：`installBundle` 对已在 profile 里的包一律抛 `already-installed`（不区分目标版本），所以升级走 `dsh plugin add 包名@版本` → `pnpm add` | 同左（没有官方升级路径） |
 
 服务不存在时（例如没有 `profileContext` 的部署）自动退回手写路径，功能不消失。响应里的 `via` 字段告诉你这次走的是 `official` 还是 `fallback`。
+
+> 升级走 CLI 的原因：官方 `installBundle` 的语义是「社区插件升级请先卸载再装」，
+> 见到 profile 里已有同名依赖就直接拒绝。升级完成后回执是 `restart-required`；
+> 若目标版本的 peer 依赖与当前 DSH 运行时不一致，DSH 会拒绝安装并在错误里给出
+> `dsh plugin allow-version` 命令 —— curator 只翻译它，不替你接受版本风险。
 
 「设置 → 按包名安装」这个逃生舱除 npm 包名 / `github:owner/repo` 外，也接受**本地目录绝对路径**
 （Windows `C:\...`、UNC `\\server\share\...`、POSIX `/...`）。内部转成 `link:<绝对路径>`，

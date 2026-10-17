@@ -2,6 +2,31 @@
 
 ## Unreleased
 
+### 修：点「更新」全部报 already-installed（官方 installBundle 拒绝覆盖已装包）
+
+用户实测：5 个可更新插件点哪个都失败，提示条只显示英文 `already-installed`。
+
+- **复现**：`POST /api/dsh-curator/plugins/install {name, version}` → `500 {"error":"already-installed"}`。
+- **根因（读 app.asar 源码坐实）**：`dsh-plugin-manager` 的 `installBundle` 里有一道前置拦截 ——
+  `if (ownerContext.get("hmr") !== void 0 && known !== void 0 && Object.hasOwn(before, known))`
+  就 `throw new ManagementFailure("already-installed")`。**它不看目标版本**：
+  只要 profile dependencies 里已有这个包就拒绝。官方的产品语义是「社区插件升级请先卸载再装」，
+  所以官方服务根本没有第三方插件的升级路径。
+  此前「官方通道接受 name@version」的验证只覆盖了 `parseInstallSpec`，没覆盖 `installBundle` 的前置检查 ——
+  这是这次漏掉的根因。
+- **修法（分流）**：已装 + 给了目标版本 + 非本地目录 = 升级 → 走 `dsh CLI`（`dsh plugin add name@version`，
+  失败退 `pnpm add`），这是历史上真机验证过的通道；装新包仍优先官方 `installBundle`（热应用 + 回滚）。
+  升级结果标 `restart-required`（模块解析图变了，下次启动生效）。
+- **错误中文化**：`already-installed` 与 DSH 的 peer 兼容性拒装（`incompatible with dsh ... allow-version`）
+  都翻成人话；兼容性那条直接给出精确版本例外的命令，但 **curator 不替你自动接受风险**。
+- **真机验证**：`dsh plugin --profile desktop add dsh-context@0.73.0`
+  → 磁盘 0.72.0 → 0.73.0、profile spec `0.72.0 → 0.73.0`。
+- **测试**：新增 `tools/test-update-channel.mjs` 13 项（分流真值表 + 错误映射 + 源码依据），
+  全量 19 套回归 0 失败。
+- **注意**：DSH 运行时已升到 `0.2.1-rc.2`。`dsh-workbuddy-connect` 0.7.x 把 peer 钉成精确版本
+  （0.7.6 钉 `0.2.0-rc.2`、0.7.7 钉 `0.2.1-rc.1`），所以它在 rc.2 上会被启动校验拒载；
+  更新到 0.7.7 仍需显式 exact-version 例外（命令见错误提示），这是发布方 pin 版本导致的，不是更新通道的问题。
+
 ### 改：多窗口比例适配 —— 最大化窗口不再单边留白
 
 用户截图：2560 宽的最大化窗口下，详情页内容只有 880px 且**贴左边**，右侧空出 1400px，
