@@ -36,6 +36,20 @@ dsh plugin --profile "${DSH_PROFILE:-desktop}" add "link:$(pwd)/dsh-curator"
 
 装完重启一次 DSH，插件会被加载进来（`dsh plugin add` 只改 profile 清单）。装/卸/启停会写入 profile 的 `package.json` 与 `cordis.patch.yml`，两者都做了自动备份（保留最近 5 份）。
 
+### 装 / 卸 / 启停走哪条通道
+
+插件管理优先使用 **DSH 宿主自己的 `pluginManager` 服务**（和左边那个官方「插件」页是同一套代码）：
+
+| 操作 | 官方服务 | 拿不到服务时 |
+|---|---|---|
+| 启用 / 停用 | `setBundleEnabled` —— 写 `dsh.profile.bundles` 并调 `reconcileProfilePatches` 热应用 | 手写补丁层 `disabled` + 改 bundles |
+| 卸载 | `removeBundle` —— 先停用、热应用，再 `pnpm rm`，并拒绝卸载受保护包 | `dsh plugin rm` → `pnpm rm` 三级退路 |
+| 安装 | `installBundle` —— pnpm add + 进 bundles + 热应用，失败回滚 `package.json` / `pnpm-lock.yaml` | `dsh plugin add` → `pnpm add` |
+
+服务不存在时（例如没有 `profileContext` 的部署）自动退回手写路径，功能不消失。响应里的 `via` 字段告诉你这次走的是 `official` 还是 `fallback`。
+
+**关于热生效**：DSH 把插件启停建模成 cordis 加载器入口树的增删，而不是进程重启，所以启停通常会当场生效；只有**改变模块解析图**的操作（装新包、换 `link:` 目标）才需要重启，此时回执是 `restart-required`（界面提示「下次启动生效」）。
+
 ### 平台支持
 
 目前**在 Windows 上验证过**。代码里对 macOS / Linux 做了兼容处理（路径分隔符、大小写比较、`tar` 解压），但没有实测 —— 遇到问题欢迎提 issue。
@@ -114,6 +128,17 @@ sources: []         # 技能来源列表，由面板「设置」页维护
 | `$DSH_HOME/profiles/<profile>/package.json`、`cordis.patch.yml` | 仅在装 / 卸 / 启停插件时写，写入前自动备份 |
 
 **只读来源**：外部 agent（Claude Code、Codex 等）的技能目录只被读取，改可见性、删除等写操作一律拒绝。可见性能写的只有 DSH 用户库和未标记只读的共享池。
+
+## 主题与可读性
+
+颜色一律取宿主语义 token（`--dsw-alias-*`），**不写死色值**，所以明暗主题、第三方皮肤都会自动跟随。
+
+两条刻意遵守的约束，都是实测出来的：
+
+1. **不拿 `--dsw-alias-bg-base` 当背景**。鲸鱼娘皮肤（`@smalltailqwq/dsh-client-ui-skin-maid-atelier`）把它设为 `transparent` 让壁纸透出来，任何用它当底色的面板，文字会直接叠在壁纸上。本插件用显式不透明的 `--ss-surface`（`bg-layer-1` 88% + `bg-layer-3`）。
+2. **状态色不写死**。`#34c759` / `#ff9500` / `#ff9f0a` 这类 iOS 数值在鲸鱼娘皮肤的**浅色主题**下，压在本插件面板底色上的对比度只有 2.12 / 2.10 / 1.96，低于 WCAG AA 要求的 4.5。现在改用 `--dsw-alias-state-success-primary` / `-warn-label` / `-error-primary`，由宿主按主题成对调过。
+
+实测数据：面板底色 × 壁纸（纯白 / 纯黑）共 12 种组合，正文与次要文字对比度 7.38–14.12，全部通过 AA。
 
 ## 可见性治理是 DSH 原生能力
 
