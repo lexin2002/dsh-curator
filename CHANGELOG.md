@@ -21,6 +21,9 @@
   都翻成人话；兼容性那条直接给出精确版本例外的命令，但 **curator 不替你自动接受风险**。
 - **真机验证**：`dsh plugin --profile desktop add dsh-context@0.73.0`
   → 磁盘 0.72.0 → 0.73.0、profile spec `0.72.0 → 0.73.0`。
+- **端点级验证**：`tools/test-update-e2e-real.mjs` 直接 import 真实的 `lib/index.js`、
+  用假 ctx 抓路由后真跑一次升级请求 —— 返回 `200 {via:"dsh", alreadyCurrent:true}`，
+  不再是 `500 already-installed`。注意：DSH 必须重启后才会加载新 host 代码。
 - **测试**：新增 `tools/test-update-channel.mjs` 13 项（分流真值表 + 错误映射 + 源码依据），
   全量 19 套回归 0 失败。
 - **注意**：DSH 运行时已升到 `0.2.1-rc.2`。`dsh-workbuddy-connect` 0.7.x 把 peer 钉成精确版本
