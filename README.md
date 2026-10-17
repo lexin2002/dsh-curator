@@ -61,6 +61,8 @@ dsh plugin --profile "${DSH_PROFILE:-desktop}" add "link:$(pwd)/dsh-curator"
 
 **关于热生效**：DSH 把插件启停建模成 cordis 加载器入口树的增删，而不是进程重启，所以启停通常会当场生效；只有**改变模块解析图**的操作（装新包、换 `link:` 目标）才需要重启，此时回执是 `restart-required`（界面提示「下次启动生效」）。
 
+**开关与徽标是两个维度**：开关是 profile 里的**选择状态**（在 bundles 里、没被补丁层停用），徽标是宿主**实际加载状态**。DSH 的版本兼容闸门会在启动时跳过 peer 依赖不匹配的插件——这时开关是开的、插件却没加载。curator 会把宿主给出的原因显示为 **未加载**（详情页附 `dsh plugin allow-version ... --accept-risk` 命令），而不是只写「已关闭」。
+
 ### 平台支持
 
 目前**在 Windows 上验证过**。代码里对 macOS / Linux 做了兼容处理（路径分隔符、大小写比较、`tar` 解压），但没有实测 —— 遇到问题欢迎提 issue。

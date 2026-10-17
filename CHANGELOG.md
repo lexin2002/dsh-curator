@@ -2,6 +2,32 @@
 
 ## Unreleased
 
+### 修：开关显示「开启」、徽标却写「已关闭」——选择状态 ≠ 运行状态
+
+用户实测：`dsh-workbuddy-connect` v0.7.7 开关是开的，徽标却写「已关闭」，问"什么情况"。
+
+- **两个维度本来就不是一回事**：
+  - 开关 = profile **选择状态**（在 `dsh.profile.bundles` 里、且没被补丁层 `disabled: true` 压住），
+    由 `effectivePluginState()` 判定；
+  - 徽标 = 宿主**实际加载状态**（`fiberPhase`）。
+  DSH 还有一道版本兼容闸门：插件 peer 依赖与 runtime 不一致时，启动会直接跳过它。
+  这时「配置里已启用、进程里没加载」是正确的，但界面只给一个「已关闭」，看起来就是开关坏了。
+- **本次实例的根因**：DSH 运行时升到 `0.2.1-rc.2`，而 workbuddy 0.7.7 把 peer 钉成精确的
+  `0.2.1-rc.1`（0.7.6 钉 `0.2.0-rc.2`），启动校验判定不兼容 → 跳过。这不是 curator 的启停逻辑错。
+- **宿主**：新增 `readRuntimeProblems()`，读官方 `pluginManager.listBundles()` 条目上的
+  `error`（`incompatible-version` 带 `incompatible[].requirements/runtimeVersion`），
+  转成 `{ code, text, fixCommand }`；`/plugins` 给每个插件挂 `runtimeError`。
+- **前端**：
+  - 徽标在「有 runtimeError 且未 active」时显示 **未加载**（红色），tooltip 给完整原因；
+  - 卡片显示警告块；详情页正文最前面显示「未加载 · incompatible-version」+ 原因 + 可复制的
+    `dsh plugin allow-version ... --accept-risk` 命令；
+  - **开关语义保持不变**（它还是"启用/停用选择"），但界面不再让两种状态互相说谎。
+- **验证**：新增 `tools/test-runtime-state.mjs` 14 项；新预览状态
+  `plugin-detail-runtime-error`（真渲染截图核对开关 ON + 未加载 + 命令）。
+  全量 21 套回归、gate 14/14、对比度 48/48 全绿。
+- **Note**：要真正让 workbuddy 0.7.7 跑起来，仍需执行上面那条 allow-version（接受 peer 风险），
+  或等发布方推出适配 rc.2 的版本。
+
 ### 修：点「更新」全部报 already-installed（官方 installBundle 拒绝覆盖已装包）
 
 用户实测：5 个可更新插件点哪个都失败，提示条只显示英文 `already-installed`。
