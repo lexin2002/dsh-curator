@@ -2,6 +2,40 @@
 
 ## Unreleased
 
+### 改：插件管理（装 / 卸 / 启停 / 查更新）全部调官方接口
+
+动机：这些功能以前是 curator 自己实现的一套（拼 `pnpm add`、自己写补丁层 YAML、
+自己扫 `.pnpm` 残留、自己比对 npm 版本）。官方语义一变，这套就悄悄跑偏——
+最典型的是「升级」：curator 用 pnpm 覆盖安装，而官方的规则是**第三方插件先卸载再装**；
+再往前一步，自己加的「补丁层引用」守卫还误拦了正常卸载。所以这次不修修补补，
+而是把整条通道换成官方实现。
+
+- **动作层**：客户端改用官方 `remote.pluginManager`——
+  `setBundleEnabled` / `setPluginEnabled`（启停）、`removeBundle`（卸载）、
+  `installBundle` + `inspect`（安装与目标版本）、`listBundles`（启用状态与可否卸载）。
+  以官方返回的 `application`（applied / restart-required / failed / cancelled）为准，
+  不再用「HTTP 200」当成功。
+- **升级**：按官方规则「先卸载再装」，确认框里写明，不再自己拼 pnpm 命令。
+- **检查更新**：由官方 `listBundles`（已装版本）+ `inspect`（官方认可的版本）得出，
+  不再自己打 npm registry；进页面静默查一次，之后由「检查更新」按钮主动重查。
+  版本口径与官方页面一致，不会再出现「这里说可更新、官方页说最新」。
+- **开关状态与「可否卸载」**：取自官方 `listBundles`（`enabled` / `removable`），
+  宿主只提供 README、目录、AI 说明这类元数据。
+- **删掉的自写通道**（约 500 行）：`/plugins/toggle`、`/plugins/uninstall`、
+  `/plugins/install`、`/market/status` 四个路由，以及 `installBundle`、
+  `uninstallPluginPackage`、`marketInstallPackage`、`allowReleaseAgeException`、
+  `backupProfileFiles`、`dropPatchRows`、`setPatchDisabled`、`fetchNpmLatest`
+  与 npm 版本缓存、`marketVersionOutdated`、补丁层守卫 `patchNameRefIds` 等。
+  「技能市场」的安装不走插件通道，未受影响。
+- **行为变化（如实说明）**：① 升级不再是"一键覆盖"，按官方语义先卸再装；
+  ② 没有官方插件管理器的部署里，这些按钮会明确提示「不可用」，不再有自写兜底；
+  ③ 卸载后不再自动清理悬空补丁行（官方就留着，DSH 启动只多一条 warn）。
+- **验证**：`node --check` 两半边通过；`test-behavior` 11/11（新增 3 项：
+  启停确实调官方 `setBundleEnabled`、不再打 `/plugins/toggle`、不再打 `/market/status`）；
+  `test-ui-simplify` 30/30、`test-displayname` 28/28、`test-plugin-detail-page` 18/18、
+  `test-market-detail` 18/18、`test-market-catalog` 18/18；
+  无头 Chrome 逐页截图 `ALL CLEAN`（无横向溢出、无遮挡）。
+
 ### 修：改过配置的插件卸不掉（补丁层守卫拦得过宽）
 
 现象：卸载 `@linxin666/dsh-pet` 报
