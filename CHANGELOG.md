@@ -2,6 +2,31 @@
 
 ## Unreleased
 
+### 修：改过配置的插件卸不掉（补丁层守卫拦得过宽）
+
+现象：卸载 `@linxin666/dsh-pet` 报
+「cordis.patch.yml 仍引用它，先移除相关补丁行再卸载（改坏了启动会报错）」，
+可用户没写过任何奇怪的引用。
+
+实情两条：
+
+- 用户补丁层里那行 `- id: pet / name: "@linxin666/dsh-pet"` 的 **id 本来就是包
+  自己 insert 的那一行**（用户只是改了里面的 config）。旧守卫只看「有没有用
+  name: 引用」，于是把「包自己的行」也当成了外部引用，一律拒绝。
+- 文案也夸大了：读 DSH 的补丁应用代码（`applyEntryPatches`），找不到目标 id 的
+  非 insert 补丁只 `warn("patch: entry %C not found")` 然后跳过，**不会让启动失败**；
+  真正会崩的是「bundles 里留着这个包、但包目录没了」（`cannot resolve profile bundle`），
+  而那条路卸载流程本来就会清。
+
+改法：
+
+- 新增 `patchNameRefIds()`：认出用户补丁层里以 `name:` 引用该包的**顶层行 id**
+  （只认顶格 `- id:` 块里恰好两格缩进的 `name:`，与 `readPatchDisabled` 的规则对称）。
+- 守卫改成：**只拦 id 不属于这个包自己 insert 的那些行**（删掉会丢用户手写的配置），
+  并在报错里点名是哪个 id。属于包自己的行放手卸载，由原有 `dropPatchRows` 一并清掉。
+- 验证：新增 `test-uninstall-guard`（11 项）：真实补丁层里 `pet` 被认出且不再拦、
+  用户自造 id 会拦、引号/无引号/缩进/空文本等边界。
+
 ### 修：插件市场「加载目录…」一直转，拉不下来
 
 现象：插件 → 插件市场停在「全部 (0) / 结果 0/0 / 加载目录…」，
