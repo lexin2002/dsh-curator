@@ -1,6 +1,6 @@
 {
   "name": "dsh-curator",
-  "version": "0.1.1",
+  "version": "0.1.0",
   "description": "DSH 控制台：一处管理本机所有 coding agent 的技能与 DSH 插件，内置技能市场与插件市场，并用 AI 把每个技能/插件讲成中文说明。",
   "type": "module",
   "main": "lib/index.js",
