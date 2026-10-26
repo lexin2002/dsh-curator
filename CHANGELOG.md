@@ -26,6 +26,31 @@
   条目被 tar 拦下）、子进程分支在 Linux 上选 `dsh` 而不套 `cmd.exe`。README 的平台支持表
   按"Windows 实测 / Linux 部分实测 / macOS 未测"如实更新。
 
+### 修：连点几个「更新」会互相踩 —— 其中一个会静默失败（用户报「无法升级」）
+
+实测复盘（2026-10-26 19:11–19:13）：用户在 55 秒内点了 5 个「更新」，4 个成功，
+`dsh-free-search` 那次**没有留下任何 pnpm 操作日志**、版本也没动 —— 说明失败发生在
+官方 `removeBundle` 的前置检查里，而不是下载/安装。
+
+根因：curator 一次升级是 `removeBundle → installBundle` **两个离散步**，而多个升级是
+并发提交的；官方只有一条变更队列，几条序列交错时会拒掉其中一条（错误码如
+`bundle-in-use` / `not-removable`，界面只闪一下）。
+
+改法：
+
+- **升级串行化**：模块级 `updateChain` 把升级排成一条 promise 链，点几个都按顺序跑，
+  不会出现"B 的 remove 插在 A 的 remove 与 install 之间"。排队时按钮立刻显示「更新中…」。
+- **官方错误码翻人话**：`not-removable` / `bundle-in-use` / `stop-profile` /
+  `unknown-bundle` 现在各自给出原因和下一步（以前只显示一个英文码）。
+- 新增 `dsh-frontend-env/test-update-queue.mjs`：用带延迟的桩 + 时间线证明两个升级
+  不交错、且两个插件都真的换到新版本（7 项）。
+- `test-update-check.mjs` 改成**不写死版本**（用户随时会把某个插件升掉）：改为校验
+  "chip 目标版本严格高于磁盘版本""link 包不出现""计数与 chips 一致"等不变量；连不上
+  当前端口时**跳过**而不是报失败（桌面版端口每次启动都变）。
+- 顺手给 `official-contract` 加了 `?bundle=<包名>`：把该包在官方 `listBundles` 里的
+  原始行（`removable` / `installed` / `enabled` / `error`）带出来，下次再遇到
+  "某个插件升不了" 可以一眼看出是哪种拒绝，不用再翻 pnpm 日志猜。
+
 ### 加：升级前快照 / 一键恢复（跨进程、跨重启的兜底）
 
 动机：官方的回滚只覆盖「单次 `installBundle` 内部失败」。pnpm 装到一半被杀、装完重启才
