@@ -2,6 +2,62 @@
 
 ## Unreleased
 
+### 修：「检查更新」是个摆设（永远「已是最新」）、「更新」永远 already-installed
+
+用户原话：「升级检查就是个摆设，好的插件都是旧版本」。实测坐实，两处都是上一轮
+「全部改调官方接口」时引入的：
+
+- **查更新用错了官方方法**：`officialCheckUpdates()` 对每个已装插件调
+  `inspect(包名)`，而官方 `inspect` 回答的是「这个 spec 能不能装成**一个新包**」，
+  对已经装在依赖里的包一律回 `refused / already-installed`（连 registry 都不问）。
+  于是每个插件都被跳过，`updates` 恒为空，界面永远「已是最新」。
+  本机实测：dshmarket 1.66.47→1.70.2、dsh-context 0.74.0→0.77.0、
+  dsh-free-search 0.9.11→0.9.15、@xmanrui/dsh-im 5.4.0→5.6.0、
+  dsh-plugin-wallpaper-engine 1.3.3→1.4.0 全部漏报。
+- **更新动作被同一道闸门挡死**：`officialInstall(spec, { replaceExisting: true })`
+  先调 `inspect(spec)`，已装包在第一行就被 refused 掉，「先卸载再装」那段根本
+  没机会跑。
+
+改法：
+
+- **宿主新增 `POST /api/dsh-curator/plugin-updates`**：只替官方补一件官方不提供的
+  事 —— 问 registry 的 `dist-tags.latest`。按官方 `registries()` 给的顺序挨个试
+  （含 fallback），并发 6、单个 8s 超时、10 分钟缓存、`refresh` 强制重查；
+  只查「注册表版本」这一类依赖，`link:` / `file:` / `git` 一律跳过（它们的版本
+  由源头决定，查 latest 只会造出「本地插件永远可更新」的假信号）。
+- **前端 `officialCheckUpdates()`**：已装版本仍取官方 `listBundles()`（口径不变），
+  最新版本问上面的宿主端点，再用真正的语义版本比较判断「有没有更高」。
+  新增 `compareVersions()`：数字段按数值比、预发布低于同号正式版、已装比 latest
+  新时不提示更新。
+- **前端 `officialUpdate(name, version)`**：按官方文档的顺序 `removeBundle` →
+  `installBundle(name@<目标版本>, { saveExact: true })`；**启停原样带回去**；
+  装完回读 listBundles 的版本，没变就返回"更新没生效"（不再谎报成功）；
+  安装失败时尽力把旧版本装回去，并把结果原话告诉用户。
+- **失败文案人话化**：官方把 pnpm 整段输出当 message 抛回来，直接糊到界面上就是
+  噪音。新增 `humanizeFailure()` 翻「不满 24 小时 / 404 / 版本不存在 / 网络 /
+  已装」这几类，其余只留错误行。
+- **顺手修掉一条过期承诺**：`summarizeToolError` 里还写着「点更新会自动把目标
+  版本加入 white-list 重试」——那段自动白名单代码早就删了，改成如实说明
+  「等满 24 小时再更新，或者自己往 pnpm-workspace.yaml 加 minimumReleaseAgeExclude」。
+
+验证（都是真实现跑的，不是抄一份实现出来测）：
+
+- `tools/test-version-outdated.mjs` 31/31：从 `client.js` 抠出真的
+  `compareVersions` 跑 16 组版本对（含本机 5 个真实数据），再断言「查更新那条路
+  不再走 inspect」「install spec 带明确版本」「装完回读」「失败回滚」等源码事实。
+- `dsh-frontend-env/test-update-check.mjs` 17/17：真 client.js + 真宿主接口 +
+  真 registry。界面真的报出 5 个「可更新 → vX」，工具条出现「全部更新 (5)」，
+  点「检查更新」提示「发现 5 个可更新」，全程没有调用官方 inspect。
+- `dsh-frontend-env/test-update-apply.mjs` 18/18：用有状态的 pluginManager 桩
+  钉死调用序列（remove → install name@version）、saveExact、原启停状态、
+  失败回滚、以及「官方说成功但版本没动」时如实报错。
+- 顺带把 `test-behavior` / `test-ui-simplify` 里那个**现实中不存在的** inspect
+  返回值（`status:'accepted', version:'1.3.3'`）改成真实行为（已装 → refused）——
+  那个假桩正是线上 bug 一直绿着的原因。两个用例分别回到 11/11、30/30。
+- `test-error-visibility` 的启停失败用例改走官方 remote 桩，2/2。
+- 旧的 `test-update-flow.mjs` / `test-update-version.mjs` 测的是已被删除的
+  curator 自有 HTTP 通道，移进 `dsh-frontend-env/_retired/` 并写明替代用例。
+
 ### 改：插件管理（装 / 卸 / 启停 / 查更新）全部调官方接口
 
 动机：这些功能以前是 curator 自己实现的一套（拼 `pnpm add`、自己写补丁层 YAML、
