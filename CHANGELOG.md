@@ -2,6 +2,26 @@
 
 ## Unreleased
 
+（下一个版本写在这里）
+
+## 0.1.1 — 2026-10-26
+
+首次公开发布准备：打包与版本收口、发布前最小回归、文档与仓库对齐。
+
+- **打包**：`files` 补上 `docs/UPGRADE-RISKS.md`（用户装上后能直接读到"下次升级会坏在哪、
+  怎么判定、怎么回退"）；补 `author` / `publishConfig`；`dsh.engines.dsh` 从 `>=0.2.0-rc.1`
+  收紧到 `>=0.2.1-rc.2`（本项目实际依赖的官方 remote 语义所需版本，实测于 rc.3）。
+- **发布前最小回归**：新增 `test/unit.mjs` + `npm test`（50 项，零依赖、不需要运行 DSH）。
+  只盯三件发布前最容易翻车的事：打包完整性（`files` / `main` / `exports` /
+  `dsh.bundle.patch` 指向的文件都在）、安全红线（无 `eval` / 无动态执行 / 无写死本机路径 /
+  `innerHTML` 只用于静态样式常量）、纯函数正确性（`compareVersions`、`humanizeFailure`，
+  都是直接抠 `lib/*.js` 的真实实现来跑）。
+- **README**：安装段补上 npm 一行装法；补兼容性说明；补「快照与恢复」功能行与两张界面截图；
+  纠正「装/卸/启停/查更新全部调官方」与「自动备份保留最近 5 份」两处过期描述。
+- **RELEASING.md**：把 2026-10-11 的"现状体检"更新到当前真实状态（远端已建、分支 main、
+  身份已配、已有测试），删掉对已删除函数（`uninstallPluginPackage` / `marketInstallPackage` /
+  `extractArchive`）和 `shell: true` 的过时描述。
+
 ### 加：升级前快照 / 一键恢复（跨进程、跨重启的兜底）
 
 动机：官方的回滚只覆盖「单次 `installBundle` 内部失败」。pnpm 装到一半被杀、装完重启才

@@ -15,17 +15,30 @@ DSH 用户库（`~/.dsh/skills`）只会加载自己目录下的技能，而实�
 | **可见性治理** | 一个「禁用」总开关（同时关掉模型侧与用户侧），详情页里还能分别控制 `disable-model-invocation` / `user-invocable` 两个 DSH 原生 frontmatter 键 |
 | **溯源** | 记录每个导入技能的来源与导入时间，并告诉你"来源是否还在、能不能重新导回来" |
 | **回收站** | 删除 = 移入回收站，可恢复 / 彻底删 / 一键清空；不再需要手动去文件系统里 rm |
-| **插件管理** | 列表显示 AI 中文短名并保留悬停/搜索英文原名；详情保留放大原名与主页链接，滑块启停、卸载，可按包名安装或在插件市场发现新插件。**装 / 卸 / 启停 / 查更新全部调官方 `remote.pluginManager`**（`setBundleEnabled` / `removeBundle` / `installBundle`+`inspect` / `listBundles`），官方改语义这里自动跟随；升级按官方规则「先卸载再装」 |
+| **插件管理** | 列表显示 AI 中文短名并保留悬停/搜索英文原名；详情保留放大原名与主页链接，滑块启停、卸载，可按包名安装或在插件市场发现新插件。**写操作全部调官方 `remote.pluginManager`**（`setBundleEnabled` / `removeBundle` / `installBundle`+`inspect` / `listBundles`），官方改语义这里自动跟随；升级按官方规则「先卸载再装」，装完回读版本、失败回滚。查更新是官方 `listBundles` + 向 registry 问 `dist-tags.latest`（官方没有这个能力） |
 | **插件详情** | 一屏一个插件：放大显示英文原名与中文副标题、运行状态徽标、AI 说明（有结果时可直接「重新分析」）、信息事实表（安装标识/安装目录/主页）作者注册的原生配置页、README 折叠阅读。作者没注册配置页时不显示空的「配置」标题 |
 | **插件市场** | DSH 插件目录：浏览、搜索、看兼容性、一键安装。目录先读本地缓存（打开即有），过期后台补新；站点连不上时自动改从 npm 包 `dsh-plugin-catalog` 取同一份数据 |
 | **技能市场** | SkillHub + ClawHub 双源目录，分类、排序、分页、一键安装 |
 | **AI 说明** | 用中文短名、一句话说明和用法标识技能/插件；详情保留英文原名。**默认关闭**，开启后可用宿主模型或自定义端点（⚠️ 会把技能全文发出去，见[数据与隐私](#数据与隐私)）。旧缓存没有中文名时会自动重新分析补齐 |
+| **快照与恢复** | 每次升级插件前自动给 profile 的状态文件（`package.json` / `pnpm-lock.yaml` / `cordis.patch.yml` / 兼容性例外）拍一张快照；设置页可一键退回，恢复前还会再拍一张。装完重启才发现不兼容时，这是唯一的退路 |
 
 界面中英双语（跟随宿主语言切换）。
 
+## 界面预览
+
+![插件页：已装插件与可更新标记](https://raw.githubusercontent.com/lexin2002/dsh-curator/main/docs/screenshots/plugins.png)
+
+![设置页：快照与恢复](https://raw.githubusercontent.com/lexin2002/dsh-curator/main/docs/screenshots/snapshots.png)
+
 ## 安装
 
-**从 GitHub 装**：
+**从 npm 装**（推荐，一行）：
+
+```bash
+dsh plugin --profile "${DSH_PROFILE:-desktop}" add dsh-curator
+```
+
+**从 GitHub 装**（想跟源码走）：
 
 ```bash
 git clone https://github.com/lexin2002/dsh-curator.git
@@ -34,7 +47,10 @@ dsh plugin --profile "${DSH_PROFILE:-desktop}" add "link:$(pwd)/dsh-curator"
 
 **本机开发**同上，改代码即时生效（配合 HMR）。
 
-装完重启一次 DSH，插件会被加载进来（`dsh plugin add` 只改 profile 清单）。装/卸/启停会写入 profile 的 `package.json` 与 `cordis.patch.yml`，两者都做了自动备份（保留最近 5 份）。
+装完重启一次 DSH，插件会被加载进来（`dsh plugin add` 只改 profile 清单）。
+
+**兼容性**：需要 DSH `>= 0.2.1-rc.2`（本项目实测于 `0.2.1-rc.3`），Node `>= 22.5`。
+在 `rc.2` 上除了"查更新"会退化成只问默认 registry（拿不到镜像回退顺序）之外，其余功能正常。
 
 ### 装 / 卸 / 启停 / 查更新走哪条通道
 
@@ -224,11 +240,18 @@ DSH 的主区可能比窗口窄得多。内容统一 1120px 居中（设置页 1
 
 ```bash
 npm run check      # node --check 双端（lib/index.js + lib/client.js）
+npm test           # 发布前最小回归（50 项，零依赖、不需要运行 DSH）
 ```
+
+`npm test` 覆盖三件发布前最容易翻车的事：**打包完整性**（`files` / `main` / `exports` /
+`dsh.bundle.patch` 指向的文件是否都在）、**安全红线**（无 `eval` / 无动态执行 / 无写死路径、
+只在静态样式常量上用了 `innerHTML`）、以及两个纯函数（版本比较 `compareVersions`、
+失败文案 `humanizeFailure`）—— 都是直接从 `lib/*.js` 里抠出真实实现来跑，不是抄一份。
+
+完整的回归（真 DSH 接口 + jsdom 真渲染 + 真 registry）在开发工作区里跑，不随包发布。
 
 - 服务端 `lib/index.js`：cordis 插件，导出 `apply(ctx, userConfig)`，通过 `ctx.webServer.register` 暴露 `/api/dsh-curator/*`。
 - 客户端 `lib/client.js`：浏览器端自包含模块，**只能 `require("react")`**，没有构建步骤、不依赖任何 npm 包（连 `js-tiktoken` 都没引，token 数是自研启发式估算）。改完直接生效。
-- 仓库内不含测试脚本；回归校验与端到端走查在开发工作区里跑。
 
 ## License
 

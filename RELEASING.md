@@ -8,19 +8,19 @@
 
 ## 0. 现状体检
 
-发布前先知道自己在哪。以下是 2026-10-11 实测的结果：
+发布前先知道自己在哪。以下按 **2026-10-26** 的实测更新（早先 2026-10-11 的版本已过时）：
 
 | 项目 | 状态 | 要做什么 |
 |---|---|---|
-| git 仓库 | 有历史，分支 `master` | — |
-| git remote | **没有** | 建远端仓库后 `git remote add` |
-| 提交身份 | **占位符 `local <dev@local>`** | **必须改**，见 §3 |
-| npm 登录 | **未登录**（`ENEEDAUTH`） | 要发 npm 才需处理，见 §2 |
-| `gh` CLI | **未安装** | 想用命令行建仓库才需装；网页操作不需要 |
-| `.gitignore` | 原先没有（已补） | — |
-| 包名 `dsh-curator` | npm 上**可用**（404，2026-10-11 逐个核实） | 直接用这个 |
+| git 仓库 | 有历史，分支 `main`；远端 `origin` = github.com/lexin2002/dsh-curator | — |
+| 与远端的关系 | 远端曾停在 `24c98f3`（2026-10-12），本地领先 23 个提交，**无分叉** | `git push` 即可，不需要 force |
+| 提交身份 | 已设为 `lexin2002 <210155061+lexin2002@users.noreply.github.com>` | 已就绪 |
+| 测试 | 仓库内已有 `npm test`（`test/unit.mjs`，50 项，零依赖） | `npm test` 必须全绿 |
+| npm 登录 | 未登录（本机 `npm` 走 `.cmd`，PowerShell 需 `npm.cmd`） | 要发 npm 才需处理，见 §2.3 |
+| 包名 `dsh-curator` | npm 上**仍可用**（2026-10-26 复查仍是 404） | 直接用这个 |
+| 已发布的 tag | `v0.1.0` 打在 `b50aced`（旧代码，**早于本次全部功能**） | 本次发 `v0.1.1`，不要移动旧 tag |
+| 版本 | `package.json` 已升到 `0.1.1` | CHANGELOG 已切好段 |
 | 包名 `dsh-skill-station` | **已被别人占用** | 见 §2.2，这是个坑 |
-| 旧名 `dsh-skill-deck` | 可用，但**已弃用** | 曾用过一版；现在包名 / 仓库名 / 插件 id / 数据目录统一叫 `dsh-curator` |
 | 同生态已占用的好名字 | `dsh-hub`（local plugin hub）· `dsh-catalog`（find & install DSH plugins）· `dsh-deck` · `dsh-console` · `dsh-atlas` · `dsh-workbench` | 起名时避开，否则用户会以为是同一家 |
 
 ---
@@ -245,25 +245,36 @@ git filter-branch --env-filter '
 | 路径穿越（`../`） | `safeFolderName` 清洗 + `assertInside` 前缀比对（带尾分隔符、大小写不敏感） | `lib/index.js` |
 | 回收站恢复写到任意路径 | 恢复前 `assertInside(用户库)`，元数据不当可信输入 | `restoreTrash` |
 | 回收站 id 穿越 | `validTrashId` 挡 `/` `\` `..` | `validTrashId` |
+| 快照恢复写回任意路径 | 快照 id 必须匹配 `/^\d{13}-[a-z0-9-]{1,32}$/`；写回前逐个校验 `sha256`（半截快照拒绝落盘） | `restoreSnapshot` |
 | zip-slip / 符号链接逃逸 | 解压后遍历校验路径 + 64MB / 5000 文件上限 | `assertExtractionSafe` |
-| 包名 / spec 注入 shell | 先用白名单正则卡死（卸载 `NPM_NAME_RE`，安装 `MARKET_SPEC_RE`），不匹配直接抛错，再拼进命令（`shell: true` 是为了让 `dsh` / `pnpm` 的 `.cmd` shim 在 Windows 上能被找到） | `uninstallPluginPackage` / `marketInstallPackage` |
+| 包名 / spec 注入 shell | 装/卸/启停全部走官方 `remote.pluginManager`（**本插件不再自己拼 pnpm 命令**）；本机唯一一次起子进程是快照恢复：用 `cmd.exe /d /s /c "<dsh.cmd 绝对路径>" plugin --profile <名> install --frozen-lockfile`，参数全由代码拼、`profile` 名过白名单正则，**没有用户字符串进来**；刻意不用 `execFile(..., { shell: true })`（会按空格切断带空格的安装目录） | `runProfileInstall` |
 | 解压参数注入 | `tar` 走 argv 数组且**不带** `shell` | `extractArchive` |
-| 针对 localhost 的 CSRF | 写请求校验 `Origin` 白名单 + 要求 `application/json` | `originAllowed` |
+| 针对 localhost 的 CSRF | 写请求校验 `Origin` 白名单 + 要求 `application/json`（新增的快照/恢复路由也走同一个守卫） | `originAllowed` |
 | 请求体撑爆内存 | 2MB 上限 → 413 | `readBody` |
 | README 里的恶意链接 | 链接/图片协议白名单（`http` / `https` / `mailto`，图片另放行 `data:`） | `safeHref` / `safeImageSrc` |
-| XSS | 全程 `h()` 构造元素，**零 `innerHTML`** | 全局 |
+| XSS | 全程 `h()` 构造元素，**唯一的 `innerHTML` 是注入静态样式常量 `SKILL_BTN_CSS`** | 全局 |
+
+> `uninstallPluginPackage` / `marketInstallPackage` 这一批"自写 pnpm 通道"已在
+> commit `a9e7412` 整段删除（插件写操作全部改调官方 remote），上面的表已经按现状更新。
 
 ### 7.3 发布前必须再自查一次
 
 ```bash
-# 确认没有把 shell 打开
+# 一条命令跑完：双端语法 + 打包完整性 + 安全红线 + 纯函数正确性（50 项，零依赖）
+npm test
+```
+
+它等价于下面这些手工 grep（保留成对照，出问题时可以单独跑）：
+
+```bash
+# 确认没有打开 shell:true（注释里解释"为什么不这么写"不算）
 grep -n "shell:" lib/index.js
 
 # 确认没有动态代码执行
-grep -nE "eval\(|new Function|innerHTML|document\.write" lib/*.js
+grep -nE "eval\(|new Function|document\.write" lib/*.js
 
-# 确认没有写死本机路径 / 密钥
-grep -nE "C:\\\\Users|[A-Za-z0-9_-]{32,}" lib/*.js
+# 确认没有写死本机路径 / 密钥 / 内网地址
+grep -nE "C:\\\\Users|[A-Za-z0-9_-]{40,}|192\.168\." lib/*.js
 ```
 
 ### 7.4 供应链
@@ -286,23 +297,23 @@ grep -nE "C:\\\\Users|[A-Za-z0-9_-]{32,}" lib/*.js
 
 ### 8.1 推 GitHub
 
+远端已经建好（`origin` = github.com/lexin2002/dsh-curator），本地只是领先若干提交，
+所以是**普通 fast-forward push**，不需要 `--force`：
+
 ```bash
 cd dsh-curator
 
-# 1) 确认身份已设（§3）
+# 1) 确认身份（已配好，列一下确认没跑偏）
 git config user.name; git config user.email
 
-# 2) 确认没漏文件、没有不该提交的东西
+# 2) 跑一遍发布前回归
+npm test
+
+# 3) 确认没有未提交的改动
 git status
 
-# 3) 提交
-git add -A
-git commit -m "feat: 技能级禁用总开关 + 开关 UI 统一为滑块 + 发布前审计修复"
-
-# 4) 关联远端（把 <你的用户名> 换掉）
-git remote add origin https://github.com/lexin2002/dsh-curator.git
-git branch -M main          # 可选：主干改名 main（GitHub 默认）
-git push -u origin main
+# 4) 推送（远端只领先不落后；如果提示 non-fast-forward，先 git pull --rebase 再推）
+git push origin main
 ```
 
 推送时如果不通，多半是 **HTTPS 需要 token**：GitHub 已不支持密码推送，要在设置里生成 **Personal Access Token (classic, `repo` 权限)**，用它当密码；或者配置 SSH key。
@@ -328,9 +339,13 @@ npm publish --access public   # 无作用域包其实不需要 --access，加上
 **发之前逐项确认**：
 
 - [ ] `version` 是这次要发的号，且 npm 上**没有**同号（npm 不允许覆盖已发布版本）
-- [ ] `files` 白名单正确。实测当前打包内容 = **7 个文件**：`package.json` / `LICENSE` / `README.md` / `CHANGELOG.md` / `cordis.patch.yml` / `lib/client.js` / `lib/index.js`，约 114 kB（`RELEASING.md` 与本文件同级的 `.gitignore` **不进包**，只进 git）
+- [ ] `files` 白名单正确。实测当前打包内容 = **8 个文件**：`package.json` / `LICENSE` /
+      `README.md` / `CHANGELOG.md` / `cordis.patch.yml` / `docs/UPGRADE-RISKS.md` /
+      `lib/client.js` / `lib/index.js`，约 240 kB。
+      `RELEASING.md` / `DESIGN.md` / `test/` / `docs/screenshots/` **不进包**（截图是给
+      README 用的，走 GitHub raw URL，所以 npm 页面上也能显示）
 - [ ] 包解压后**能直接用**：`package.json` 的 `main` / `exports` / `dsh.bundle.patch` 指向的文件都在包里
-- [ ] `repository` 字段填了（**现在还是空的**）。没有它 npm 页面不会链到 GitHub，安装者会降低信任 —— 发 GitHub 后回来补上
+- [ ] `repository` 字段已填（✅ 现在有），并和仓库地址一致
 
 发完立刻验证：
 
@@ -364,15 +379,13 @@ npm i -g dsh-curator@0.2.0    # 或者装一次试试
 
 1. **别删已发布的版本**（npm 侧实际也删不掉）。发错了只能发新版本覆盖，或 `npm deprecate` 标记。
 2. **响应 issue**。第一次开源最容易犯的错是"发完就不管"，反而伤口碑。
-3. **CI（可选但推荐）**：加一个 GitHub Actions，每次 push 跑
+3. **CI（已具备条件）**：仓库里已经有 `npm test`（`test/unit.mjs`，50 项、零依赖、
+   不需要运行 DSH），可以直接接 GitHub Actions：
    ```yaml
-   - run: npm run check     # node --check 双端
+   - run: npm test
    ```
-   （`npm run check` 已经在 `package.json` 里了，直接用。）
-   注意：**本仓库目前一个测试都没有** —— 回归脚本在开发工作区的 `scripts/` 下，没搬进来，所以 CI 只能跑语法检查。这是发布后最该补的一件事，优先级高于加功能：
-   - 渲染管线那个测试是纯函数（从 `lib/client.js` 里切片抽生产代码来跑），**可以直接进 CI**，成本最低，先搬它；
-   - 后端回归需要临时起服务、造一个假 `DSH_HOME`，麻烦一些但也可搬（用 Node 内置 `test` 或直接照搬现在那套 `ok()` 计数）。
-   - 搬进来之后 CI 加两步：`npm run check` + `npm test`。
+   完整的回归（真 DSH 接口 + jsdom 真渲染 + 真 registry）仍在开发工作区，不随包发布；
+   想把它们也搬进来，优先搬"纯函数切片"那一类（成本最低，已经搬了版本比较与失败文案）。
 
 ---
 
@@ -386,13 +399,13 @@ npm i -g dsh-curator@0.2.0    # 或者装一次试试
 - [ ] 决定去哪发：只 GitHub / 只 npm / 两个都发
 
 **发之前**
-- [ ] `npm run check` 通过
-- [ ] 回归测试全绿（200 / 73 / i18n 299 键对称）
+- [ ] `npm test` 通过（双端语法 + 打包完整性 + 安全红线 + 纯函数，50 项）
 - [ ] `README.md` 里的安装命令、功能表、配置键名与实际一致
-- [ ] `CHANGELOG.md` 有这次版本的内容
+- [ ] `CHANGELOG.md` 有这次版本的内容（版本号与 `package.json` 一致）
 - [ ] `npm pack --dry-run` 的清单里没有测试、脚本、本机路径
-- [ ] 没有密钥、token、内网地址被提交（`grep` 一遍）
+- [ ] 没有密钥、token、内网地址被提交（`npm test` 里已含这几条 grep）
 - [ ] 代码里**没有残留的旧名字**：`grep -rn "skill-station\|dsh-skill-deck" lib/ cordis.patch.yml package.json` 应只在注释里说明历史时出现
+- [ ] `docs/screenshots/` 里的图能被 README 的绝对 URL 打开（仓库切到 public 之后再点一次）
 
 **发出后**
 - [ ] npm 页面 / GitHub 首页都能打开
