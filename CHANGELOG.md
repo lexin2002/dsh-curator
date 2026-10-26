@@ -17,7 +17,9 @@
   `innerHTML` 只用于静态样式常量）、纯函数正确性（`compareVersions`、`humanizeFailure`，
   都是直接抠 `lib/*.js` 的真实实现来跑）。
 - **README**：安装段补上 npm 一行装法；补兼容性说明；补「快照与恢复」功能行与两张界面截图；
-  纠正「装/卸/启停/查更新全部调官方」与「自动备份保留最近 5 份」两处过期描述。
+  纠正「装/卸/启停/查更新全部调官方」与「自动备份保留最近 5 份」两处过期描述；
+  **顶部与新增章节明确写清"本项目全部由 DeepSeek 模型 + DeepSeek Harness 完成"**，
+  并给出可自行核对的证据（CHANGELOG 的根因记录、`docs/UPGRADE-RISKS.md`、从源码抠真实函数的测试、CI）。
 - **RELEASING.md**：把 2026-10-11 的"现状体检"更新到当前真实状态（远端已建、分支 main、
   身份已配、已有测试），删掉对已删除函数（`uninstallPluginPackage` / `marketInstallPackage` /
   `extractArchive`）和 `shell: true` 的过时描述。
