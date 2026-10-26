@@ -2,6 +2,53 @@
 
 ## Unreleased
 
+### 加：升级前快照 / 一键恢复（跨进程、跨重启的兜底）
+
+动机：官方的回滚只覆盖「单次 `installBundle` 内部失败」。pnpm 装到一半被杀、装完重启才
+发现跟 runtime 不兼容、lockfile 被改花 —— 这些官方都退不回来，而用户最怕的正是
+「升级后趴窝」。
+
+- **宿主**：`GET/POST /api/dsh-curator/backups`、`POST /api/dsh-curator/backups/restore`。
+  快照只存 4 个状态文件（`package.json`、`pnpm-lock.yaml`、`cordis.patch.yml`、
+  `compatibility.json`），带 `manifest.json`（sha256 + 依赖版本表）；
+  目录 `~/.dsh/dsh-curator/backups/<毫秒>-<原因>/`。自动快照保留最近 30 张，手动的不清理。
+- **恢复**按刻意安全的顺序：先拍一张「恢复前」快照 → 校验每个文件 sha256 → 落盘 →
+  用官方 CLI（`dsh plugin --profile <名> install --frozen-lockfile`）把 `node_modules`
+  拉回 lockfile 的样子。校验放在写文件之前：半截快照写进去才是真坏。
+- **前端**：每次点「更新」前自动拍一张（reason=`before-update`，label 带包名和版本）；
+  设置页新增「快照与恢复」区块（列表最近 8 张 + 「立即备份」+ 每条「恢复」，
+  恢复是 danger 确认，确认框里写明会覆盖什么、以及恢复前会自动再拍一张）。
+- **实测**：真打端点做了一次「拍快照 → 恢复」闭环 —— 三个文件 sha256 前后一致，
+  `pnpm install --frozen-lockfile` 0.9 秒返回 `Already up to date`，并且真的多出一张
+  `before-restore` 快照。`dsh-frontend-env/test-backup-ui.mjs` 16/16。
+
+### 修：`application` 走白名单，官方新增状态不再被当成功
+
+`officialOutcome()` 原来是「不等于 failed/cancelled 就算成功」。官方以后加一个新状态
+（`blocked`、`deferred`…）就会被当成成功报给用户 —— 又一个「提示成功但没生效」。
+改成白名单（`applied` / `restart-required` / `overridden`，以及缺省），其余明确报
+「没见过的结果状态」，并在文案里指路契约自检。
+
+### 简：删掉两处没有调用点的死代码
+
+- `lib/index.js` 的 `summarizeToolError()`：从「全部改调官方 remote」（`a9e7412`）起就没
+  调用点了，真正上线的是前端 `humanizeFailure()`。留着会让人以为"这里已经处理好了"。
+  它的四类缺失文案（构建脚本被忽略 / 磁盘满 / 受保护插件 / 不是 DSH 插件）已补进前端。
+- `lib/client.js` 的 `splitSpecVersion()` 与 `officialInstall(spec, {replaceExisting})`：
+  市场页两处调用一直传 `false`，这条"看起来支持升级"的路从没被走过。现在官方安装入口
+  只管装新包，升级只有 `officialUpdate()` 一条路。市场页 `runInstall` 同步去掉 `isUpdate` 参数。
+
+### 记：把「下次 DSH 升级会坏在哪」写成可执行的文档
+
+新增 `docs/UPGRADE-RISKS.md`：架构边界（官方 vs 自研）、我们依赖的 7 条官方契约、
+R1-R10 十类预测问题（现象 / 30 秒判定命令 / 改哪个函数 / 已有防线）、
+DSH 升级后的 5 步 SOP、插件升级 SOP、三档回退手册（整份快照 / 单插件降级 / DSH 起不来时
+的命令行恢复）、10 条已知缺点与补全状态、防线清单。README 的「走哪条通道」表格也同步
+纠正（原来还写着"更新走 CLI/pnpm"、"拿不到服务时手写补丁层"，那都是旧实现）。
+
+旧测试 `test-feedback-quality.mjs`、`test-update-channel.mjs` 测的是已删除的实现，
+移进 `tools/_retired/` 并写明替代用例。
+
 ### 修：「检查更新」是个摆设（永远「已是最新」）、「更新」永远 already-installed
 
 用户原话：「升级检查就是个摆设，好的插件都是旧版本」。实测坐实，两处都是上一轮

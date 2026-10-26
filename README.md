@@ -36,23 +36,33 @@ dsh plugin --profile "${DSH_PROFILE:-desktop}" add "link:$(pwd)/dsh-curator"
 
 装完重启一次 DSH，插件会被加载进来（`dsh plugin add` 只改 profile 清单）。装/卸/启停会写入 profile 的 `package.json` 与 `cordis.patch.yml`，两者都做了自动备份（保留最近 5 份）。
 
-### 装 / 卸 / 启停走哪条通道
+### 装 / 卸 / 启停 / 查更新走哪条通道
 
-插件管理优先使用 **DSH 宿主自己的 `pluginManager` 服务**（和左边那个官方「插件」页是同一套代码）：
+插件的**状态变更**全部交给 **DSH 宿主自己的 `pluginManager` 服务**（和官方「插件」页是同一套代码）；
+只有「发现新版本」这一件事官方没提供，由 curator 自己向 registry 问（只读）。
 
 | 操作 | 官方服务 | 拿不到服务时 |
 |---|---|---|
-| 启用 / 停用 | `setBundleEnabled` —— 写 `dsh.profile.bundles` 并调 `reconcileProfilePatches` 热应用 | 手写补丁层 `disabled` + 改 bundles |
-| 卸载 | `removeBundle` —— 先停用、热应用，再 `pnpm rm`，并拒绝卸载受保护包 | `dsh plugin rm` → `pnpm rm` 三级退路 |
-| 安装 | `installBundle` —— pnpm add + 进 bundles + 热应用，失败回滚 `package.json` / `pnpm-lock.yaml` | `dsh plugin add` → `pnpm add` |
-| 更新 | **不走官方服务**：`installBundle` 对已在 profile 里的包一律抛 `already-installed`（不区分目标版本），所以升级走 `dsh plugin add 包名@版本` → `pnpm add` | 同左（没有官方升级路径） |
+| 启用 / 停用 | `setBundleEnabled` —— 写 `dsh.profile.bundles` 并 `reconcileProfilePatches` 热应用 | **明确报「不可用」**，不再自写补丁层兜底 |
+| 卸载 | `removeBundle` —— 停用、热应用、`pnpm rm`，并拒绝卸载受保护包 | 同上 |
+| 安装 | `inspect` 问「这个 spec 会装成什么」→ `installBundle`（失败自动回滚 `package.json` / `pnpm-lock.yaml`） | 同上 |
+| 更新 | **官方语义：先卸载再装**。`removeBundle` → `installBundle('名字@精确版本', { saveExact: true, enabled: 原状态 })`，装完回读版本，不一致就报「更新没生效」；装失败会把旧版本装回去 | 同上 |
+| 查更新 | 已装版本取官方 `listBundles()`；最新版本由宿主端点 `POST /api/dsh-curator/plugin-updates` 问 registry 的 `dist-tags.latest`（按官方 `registries()` 顺序回退） | 只影响「可更新」标记，不影响其他功能 |
 
-服务不存在时（例如没有 `profileContext` 的部署）自动退回手写路径，功能不消失。响应里的 `via` 字段告诉你这次走的是 `official` 还是 `fallback`。
+为什么查更新必须自己补：官方 `inspect(包名)` 回答的是「这个 spec 能不能装成**一个新包**」，
+对**已装**的包一律回 `refused / already-installed`（连 registry 都不问）。拿它查更新，
+每个插件都会被跳过，界面就会永远显示「已是最新」——这正是 2026-10 修掉的那个 bug。
 
-> 升级走 CLI 的原因：官方 `installBundle` 的语义是「社区插件升级请先卸载再装」，
-> 见到 profile 里已有同名依赖就直接拒绝。升级完成后回执是 `restart-required`；
-> 若目标版本的 peer 依赖与当前 DSH 运行时不一致，DSH 会拒绝安装并在错误里给出
-> `dsh plugin allow-version` 命令 —— curator 只翻译它，不替你接受版本风险。
+**升级前会自动拍快照**：`package.json` / `pnpm-lock.yaml` / `cordis.patch.yml` / `compatibility.json`
+存进 `$DSH_HOME/dsh-curator/backups/<毫秒>-<原因>/`，设置页「快照与恢复」可以一键退回
+（恢复 = 写回文件 + 走官方 CLI 跑 `pnpm install --frozen-lockfile`，恢复前还会再拍一张「恢复前」）。
+自动快照保留最近 30 张，手动拍的不清理。
+
+> 升级完成后回执是 `restart-required`（模块解析图变了）。若目标版本的 peer 依赖与当前
+> DSH 运行时不一致，宿主会拒绝安装并在错误里给出 `dsh plugin allow-version` 命令 —— 
+> curator 只翻译它，不替你接受版本风险。
+
+**下次 DSH 升级可能坏在哪、怎么判定、怎么修**：见 [docs/UPGRADE-RISKS.md](docs/UPGRADE-RISKS.md)。
 
 「设置 → 按包名安装」这个逃生舱除 npm 包名 / `github:owner/repo` 外，也接受**本地目录绝对路径**
 （Windows `C:\...`、UNC `\\server\share\...`、POSIX `/...`）。内部转成 `link:<绝对路径>`，
