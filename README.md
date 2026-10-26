@@ -1,5 +1,9 @@
 # dsh-curator（DSH 技能与插件控制台）
 
+> **In English** — One place to manage every skill and plugin on your machine for local coding agents (Claude Code, Codex, Cursor, and others), built as a plugin for DeepSeek Harness. Scan scattered skill folders, adopt the ones you want into `~/.dsh/skills`, and toggle or uninstall DSH plugins from the same screen.
+> Install: `dsh plugin install dsh-curator` (or from the plugin market) · [npm](https://www.npmjs.com/package/dsh-curator)
+> Not affiliated with DeepSeek. Built with DeepSeek models inside DeepSeek Harness.
+
 > **说明：这个项目是用 DeepSeek 模型 + DeepSeek Harness 写出来的。**
 > 从第一行代码到这份 README，宿主/前端全部实现、测试、文档、CI、发布脚本，
 > 都是在 **DeepSeek Harness** 里由 **DeepSeek 模型**驱动的智能体完成的。
