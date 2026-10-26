@@ -198,14 +198,21 @@ git filter-branch --env-filter '
 
 ### 6.2 ⚠️ 跨平台：这是目前最大的兼容性缺口
 
-代码在写的时候**处处照顾了 Windows**（路径分隔符、大小写不敏感比较、`tar` 解压），但：
+代码在写的时候**处处照顾了 Windows**（路径分隔符、大小写不敏感比较、`tar` 解压）。**macOS 完全没测过。**
 
-- **macOS / Linux 从未实测过**。README 里如果写"支持三平台"，那是没根据的。
-- 已知需要单独验证的点：
-  - `tar -xf` 解压 zip，Linux 上 GNU tar 能处理，但某些精简发行版可能没有；
-  - 权限位（`chmod +x` 的脚本被导入技能库后是否还能执行）。
+Linux 已经做了一轮**部分实测**（2026-10-26，WSL2 Ubuntu 24.04 + Node v24.14，从 `/mnt/c` 直接跑仓库）：
 
-**建议**：README 里先如实写"主要在 Windows 上验证"。等真有人报 macOS/Linux 的问题再修 —— 比声称支持然后被打脸好。
+| 已验证 | 结果 |
+|---|---|
+| `npm test`（语法 / 打包完整性 / 安全红线 / 纯函数，50 项） | 50/50 通过 |
+| 宿主模块 `import`（顶层常量会读 `package.json`） | 正常，`exports` / `name` / `apply` / `inject` 都在 |
+| 路径语义（`expandHome` / `tildify` / `safeFolderName` / `assertInside` / `validTrashId`） | 28 项 POSIX 断言全过；`../` 穿越与 `skills-evil` 前缀兄弟目录都被拒 |
+| GNU tar 解压（与应用同一条 `tar -xf` argv） | 正常展开；带 `../` 的恶意条目被 tar 自己拦下（`Member name contains '..'`，退出码非 0） |
+| `resolveDshCli` / `runProfileInstall` 的平台分支 | Linux 上选 `dsh`，**不套 `cmd.exe`** |
+
+**仍未验证**：在 Linux 上真正跑起 DSH 桌面端 / WSLg 的完整界面；`chmod +x` 权限位在导入技能后是否保留；macOS 全部。
+
+**建议**：README 如实写"Windows 实测、Linux 部分实测、macOS 未测"。别声称三平台支持 —— 等真有人报问题再修，比被打脸好。
 
 ### 6.3 ⚠️ 和 DSH 的兼容性：写 frontmatter 是单向门
 

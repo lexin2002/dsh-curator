@@ -21,6 +21,10 @@
 - **RELEASING.md**：把 2026-10-11 的"现状体检"更新到当前真实状态（远端已建、分支 main、
   身份已配、已有测试），删掉对已删除函数（`uninstallPluginPackage` / `marketInstallPackage` /
   `extractArchive`）和 `shell: true` 的过时描述。
+- **Linux 部分实测**（WSL2 Ubuntu 24.04 / Node 24.14）：`npm test` 50/50、宿主模块 `import`、
+  路径语义 28 项 POSIX 断言（`../` 穿越与前缀兄弟目录都被拒）、GNU `tar` 解压（恶意 `../`
+  条目被 tar 拦下）、子进程分支在 Linux 上选 `dsh` 而不套 `cmd.exe`。README 的平台支持表
+  按"Windows 实测 / Linux 部分实测 / macOS 未测"如实更新。
 
 ### 加：升级前快照 / 一键恢复（跨进程、跨重启的兜底）
 

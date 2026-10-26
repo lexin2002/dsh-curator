@@ -107,7 +107,13 @@ dsh plugin --profile "${DSH_PROFILE:-desktop}" add "link:$(pwd)/dsh-curator"
 
 ### 平台支持
 
-目前**在 Windows 上验证过**。代码里对 macOS / Linux 做了兼容处理（路径分隔符、大小写比较、`tar` 解压），但没有实测 —— 遇到问题欢迎提 issue。
+| 平台 | 状态 |
+|---|---|
+| **Windows** | ✅ 日常使用 + 全部回归实测 |
+| **Linux** | 🟡 **部分实测**（2026-10-26，WSL2 Ubuntu 24.04 / Node 24）：`npm test` 50/50、宿主模块 `import`、路径语义 28 项 POSIX 断言、GNU `tar` 解压（含 `../` 穿越条目被拦）、子进程分支选 `dsh` 不套 `cmd.exe`。**尚未在真实 DSH 安装上跑过完整界面** |
+| **macOS** | ⚪ 未实测 |
+
+遇到问题欢迎提 issue（尤其是 Linux 上导入/安装/回收站这几条路径）。
 
 ### 为什么不提供「重启 DSH」
 
