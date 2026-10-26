@@ -58,6 +58,34 @@
 - 旧的 `test-update-flow.mjs` / `test-update-version.mjs` 测的是已被删除的
   curator 自有 HTTP 通道，移进 `dsh-frontend-env/_retired/` 并写明替代用例。
 
+### 加：官方契约自检端点 `GET /api/dsh-curator/official-contract`
+
+动机：「查更新永远已是最新」不是孤儿事故 —— 它暴露的是一类风险：curator 的插件管理
+全部调宿主 `remote.pluginManager`，那是官方**内部**接口，不承诺版本间稳定，而语义
+一变就是静默失效。上一轮我们照想象写测试桩（`inspect` 回 `accepted`），测试全绿、
+线上全坏。
+
+做法：把「curator 依赖的官方语义」逐条对着运行中的宿主问一遍并返回通过/不通过：
+
+- `listBundles` / `registries` / `inspect` / `installBundle` / `removeBundle` /
+  `setBundleEnabled` 是否都还是函数；
+- `listBundles()` 是否仍返回数组，非官方插件行是否还带 `name`+`version`+`enabled`
+  （升级后回读版本靠它）；
+- `inspect(已装包)` 是否仍然 `status=refused / problem=already-installed`
+  （我们据此判断"不能用它查更新"这个前提是否还成立）；
+- `registries()` 是否仍有 `registry` / `fallbackRegistries`（查更新按它排序）。
+
+刻意只做只读调用：`inspect` 对已装包在本地就返回，不发网络、不动文件；探针不该
+改变被测对象。`tools/test-official-contract.mjs` 直接打这个端点做断言（13 项），
+DSH 每次升级后跑一次即可。
+
+顺手修的一处口径偏差：`officialRegistries()` 之前把 `registry: null`（= 用 pnpm 自己
+配置的那个）直接跳过，导致镜像被排到 pnpm 自己那个之前 —— 与官方 `registryPlan`
+的顺序相反，镜像滞后时会把旧版本当成 latest。现在按官方规则排：pnpm 自己那个在前、
+fallback 在后；pnpm 指向私有源时只问它自己（不把包名漏到公共源）。
+`test-update-check` 用真实的 `{registry:null, fallbackRegistries:[npmmirror], resolved:npmjs}`
+形状钉住了这个顺序（19/19）。
+
 ### 改：插件管理（装 / 卸 / 启停 / 查更新）全部调官方接口
 
 动机：这些功能以前是 curator 自己实现的一套（拼 `pnpm add`、自己写补丁层 YAML、
