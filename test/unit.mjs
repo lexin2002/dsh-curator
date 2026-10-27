@@ -102,6 +102,54 @@ for (const value of ['applied', 'restart-required', 'overridden']) {
 }
 check('未知状态走失败分支', outcomeSrc.includes('pmUnknownOutcome'))
 
+/* ---------- 5b. 官方 remote 调用的实参个数 ----------
+ * 回归背景（2026-10-27 用户报障）：Client→Host 的 remote 桥按 descriptor 声明的
+ * 参数个数**严格校验实参个数**。官方 rc.3 的签名是
+ * `inspect(spec, options?: InspectOptions, signal?: AbortSignal)`，options 可选但占位，
+ * 只传 1 个实参就被桥拦下：
+ *   client api: pluginManager/inspect expected 2 business argument(s) plus an optional
+ *   AbortSignal, got 1
+ * 这里用「和桥一样严格」的桩真调一次 officialInstall，钉死实参个数。 */
+console.log('\n== 5b. 官方 remote 实参个数（真调用 officialInstall） ==')
+const remoteArgs = []
+const strictApi = {
+  // 复刻 prepareInvocation：expected = descriptor.parameters.length（2），带 cancellation
+  inspect(...args) {
+    remoteArgs.push(['inspect', args.length, args[1]])
+    if (args.length !== 2) {
+      throw new Error(`client api: pluginManager/inspect expected 2 business argument(s) plus an optional AbortSignal, got ${args.length}`)
+    }
+    if (args[1] !== undefined && (args[1] === null || typeof args[1] !== 'object')) {
+      throw new Error('inspect: options 只接受 undefined 或对象，收到 ' + String(args[1]))
+    }
+    return Promise.resolve({ ok: true, value: { status: 'accepted', kind: 'registry', name: 'dsh-demo', version: '1.0.0', bundle: true, registry: null } })
+  },
+  installBundle(...args) {
+    remoteArgs.push(['installBundle', args.length])
+    if (args.length !== 2) throw new Error(`client api: pluginManager/installBundle expected 2 argument(s), got ${args.length}`)
+    return Promise.resolve({ ok: true, value: { application: 'applied' } })
+  },
+}
+const officialInstall = new Function(
+  'officialPluginApi', 'tr', 'officialOutcome', 'invalidatePhases', 'crypto',
+  // grab() 从 `function` 关键字起截，`async` 前缀要自己补回去
+  'async ' + grab(clientSrc, 'officialInstall') + '\nreturn officialInstall;',
+)(
+  () => strictApi,
+  (key) => key,
+  (result, okText) => ({ ok: true, text: okText }),
+  () => {},
+  { randomUUID: () => 'req-test-1' },
+)
+const installResult = await officialInstall('dsh-demo')
+check('officialInstall 不再被 client api 桥拦下', installResult.ok === true, installResult.text)
+const inspectCall = remoteArgs.find((entry) => entry[0] === 'inspect')
+check('inspect 收到 2 个实参（options 位置显式传 undefined）',
+  inspectCall !== undefined && inspectCall[1] === 2 && inspectCall[2] === undefined,
+  JSON.stringify(inspectCall))
+const installCall = remoteArgs.find((entry) => entry[0] === 'installBundle')
+check('installBundle 收到 2 个实参（spec + options）', installCall !== undefined && installCall[1] === 2, JSON.stringify(installCall))
+
 /* ---------- 6. 安全红线 ---------- */
 console.log('\n== 6. 安全红线 ==')
 check('没有 eval(', !/\beval\s*\(/.test(hostSrc) && !/\beval\s*\(/.test(clientSrc))

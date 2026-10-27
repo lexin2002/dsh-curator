@@ -34,6 +34,7 @@
 | C1 | `remote.pluginManager` 被注入，且 `listBundles / registries / inspect / installBundle / removeBundle / setBundleEnabled` 都是函数 | 全插件页 | 整块提示"官方插件管理器不可用" |
 | C2 | `listBundles()` 返回数组，非内置行带 `name` + `version` + `enabled` 布尔 | 已装列表、回读校验、原启停状态 | 更新无法核对版本 / 开关状态错 |
 | C3 | `inspect(已装包名)` 返回 `{ status: "refused", problem: "already-installed" }` | 我们据此**不用**它查更新 | 若改成会返回版本：我们的 registry 路径仍可用（只是多一层）；若改成抛错：新建安装会走异常分支 |
+| C3b | `inspect` 的**实参个数**必须等于 descriptor 声明的 2 个（`spec, options?`）：`options` 可选但**占位**，省略就被 Client→Host 桥当场拒绝（`client api: pluginManager/inspect expected 2 business argument(s) plus an optional AbortSignal, got 1`） | 插件市场「安装」、维护区按包名安装 | 装新包永远失败（Host 收不到请求）；启停/卸载/升级不走它，不受影响。2026-10-27 实测踩过一次，见 CHANGELOG |
 | C4 | `registries()` 返回 `{ registry: string\|null, fallbackRegistries: string[] }`（`registry: null` = 用 pnpm 自己配的那个） | 查更新时决定问哪个 registry、什么顺序 | 顺序错 → 镜像滞后时把旧版当最新；私有源可能被漏到公共源 |
 | C5 | `installBundle(spec, { enabled, requestId, saveExact })` 接受这四个选项 | 升级时钉死版本、保留启停 | 传了不认的选项 → 安装报错 |
 | C6 | `ChangeResult.value.application ∈ { applied, restart-required, overridden, failed, cancelled }` | 判断成功/失败 | 新状态出现时不能被当成成功（已用白名单兜住） |

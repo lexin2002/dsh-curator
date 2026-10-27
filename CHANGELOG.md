@@ -2,7 +2,24 @@
 
 ## Unreleased
 
-（下一个版本写在这里）
+### 修：「安装」永远失败，红条报 `client api: pluginManager/inspect expected 2 business argument(s) ... got 1`
+
+用户报障（2026-10-27，桌面端）：插件市场点「安装」/ 维护区按包名安装，页面顶部弹红条
+`client api: pluginManager/inspect expected 2 business argument(s) plus an optional AbortSignal, got 1`。
+
+根因在 **Client→Host 的 remote 桥**，不在官方插件页：桥按 descriptor 声明的参数个数
+**严格校验实参个数**。官方 rc.3 的签名是
+`inspect(spec, options?: InspectOptions, signal?: AbortSignal)` —— `options` 可选但**占位**，
+所以最少也要传 2 个实参（第二个给 `undefined`）。curator 只传了 1 个，桥直接把调用拒了，
+Host 根本没收到请求。
+
+- 改法：`api.inspect(spec, undefined)`。不能传 `null`：`options` 的 schema 只接受
+  undefined 或对象（传 null 会在 Host 侧解码失败）。
+- 影响面只有「装新包」这一条路（市场「安装」、维护区按包名安装）。启停、卸载、升级
+  （`setBundleEnabled` / `removeBundle` / `installBundle`）与技能页（`remote.skills`）
+  都不经过 `inspect`，未受影响。
+- 回归：`test/unit.mjs` 新增「5b. 官方 remote 实参个数」——用**和桥一样严格**的桩真调
+  `officialInstall`，旧代码会原样复现上面那条错误，实参个数一错就红。
 
 ## 0.1.1 — 2026-10-26
 
