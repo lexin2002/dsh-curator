@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.1.2 — 2026-10-27
 
 ### 修：「安装」永远失败，红条报 `client api: pluginManager/inspect expected 2 business argument(s) ... got 1`
 
