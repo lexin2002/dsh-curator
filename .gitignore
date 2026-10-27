@@ -1,0 +1,10 @@
+﻿node_modules/
+*.tgz
+npm-debug.log*
+.env
+.env.*
+.DS_Store
+Thumbs.db
+# 本地视觉预览与备份（生成物，不入库）
+preview-*.html
+*.bak-*

@@ -1,0 +1,27 @@
+# dsh-curator bundle patch —— 把插件行插入 profile 名册。
+#
+# 安装（profile 名取 DSH_PROFILE，桌面端通常是 desktop）：
+#   dsh plugin --profile "${DSH_PROFILE:-desktop}" add "link:<仓库>/dsh-curator"
+#
+# 关于 config：这里的值**只在首次安装**时生效 —— 也就是
+# $DSH_HOME/dsh-curator/config.json 还不存在、需要生成默认值的那一刻。
+# 之后一律以 config.json 为准（面板「设置」页写的就是它），
+# 这里不会覆盖你在界面上改过的任何设置。
+#
+# 键名必须和 lib/index.js 的 normalizeConfig 对齐，共三段：analyze / scan / market。
+# （历史上这里写过 cachePath / translateBatchSize / scanDepth / maxSkillsPerSource，
+# 那是更早的扁平键名，现在一个都不会被读取 —— 在界面里改了没反应，多半是踩到了这个。）
+- insert:
+    - id: dsh-curator
+      name: 'dsh-curator'
+      config:
+        analyze:
+          # AI 分析（旧名"翻译"）：默认关闭，要开请在面板「设置」里显式开启并选模型
+          enabled: false
+          # 一次请求分析几个技能 / 同时发几个请求
+          batchSize: 8
+          concurrency: 2
+        scan:
+          # 技能目录扫描深度 / 每个来源最多扫多少条
+          depth: 3
+          maxPerSource: 500
